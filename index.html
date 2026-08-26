@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<!-- =====================================================================
+     PRACTICAL 5 - Frontend for the mock Amazon API
+     Every button below calls one endpoint with fetch(). Keep DevTools
+     Network -> Fetch/XHR open to see the request/response for each click.
+     ================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon Clone - API Demo</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Amazon Ember", Arial, Helvetica, sans-serif;
+         background:#eaeded; color:#0f1111; }
+
+  /* ---- header ---- */
+  header { background:#131921; color:#fff; padding:10px 16px;
+           display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .logo { font-size:22px; font-weight:bold; letter-spacing:-1px; }
+  .logo span { color:#ff9900; }
+  .searchbar { flex:1; display:flex; min-width:240px; }
+  .searchbar input { flex:1; border:none; padding:9px 12px; font-size:14px;
+                     border-radius:4px 0 0 4px; outline:none; }
+  .searchbar button { background:#febd69; border:none; padding:9px 16px;
+                      border-radius:0 4px 4px 0; cursor:pointer; font-weight:600; }
+  .cartbtn { background:none; border:1px solid #444; color:#fff; padding:8px 14px;
+             border-radius:4px; cursor:pointer; font-size:14px; }
+
+  /* ---- nav ---- */
+  nav { background:#232f3e; padding:8px 16px; display:flex; gap:8px; flex-wrap:wrap; }
+  nav button { background:none; border:1px solid transparent; color:#fff;
+               padding:6px 12px; cursor:pointer; border-radius:3px; font-size:13px; }
+  nav button:hover { border-color:#fff; }
+
+  /* ---- layout ---- */
+  main { display:grid; grid-template-columns: 1fr 380px; gap:16px; padding:16px;
+         align-items:start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background:#fff; border-radius:8px; padding:16px; margin-bottom:16px; }
+  h2 { font-size:17px; margin:0 0 12px; }
+
+  /* ---- product grid ---- */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px; }
+  .card { border:1px solid #ddd; border-radius:6px; padding:12px; background:#fff;
+          display:flex; flex-direction:column; }
+  .card .t { font-size:14px; font-weight:500; line-height:1.35; min-height:56px; }
+  .price { font-size:19px; margin:8px 0 2px; }
+  .price small { font-size:12px; color:#565959; text-decoration:line-through;
+                 margin-left:6px; font-weight:400; }
+  .stars { color:#de7921; font-size:13px; }
+  .prime { color:#007185; font-size:12px; font-weight:600; }
+  .oos { color:#b12704; font-size:12px; font-weight:600; }
+  .add { margin-top:auto; background:#ffd814; border:none; border-radius:20px;
+         padding:8px; font-size:13px; cursor:pointer; font-weight:500; }
+  .add:hover { background:#f7ca00; }
+  .link { background:none; border:none; color:#007185; cursor:pointer;
+          font-size:12px; padding:4px 0; text-align:left; }
+
+  /* ---- cart ---- */
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { padding:7px 4px; border-bottom:1px solid #eee; text-align:left; }
+  .tot { font-size:16px; font-weight:600; color:#b12704; margin-top:10px; }
+  .yellow { background:#ffd814; border:none; border-radius:6px; padding:9px 16px;
+            cursor:pointer; font-weight:500; width:100%; margin-top:8px; }
+
+  /* ---- network log ---- */
+  #log { background:#0f1111; color:#c8f7c5; font-family:Consolas,monospace;
+         font-size:11.5px; padding:10px; border-radius:6px; height:300px;
+         overflow-y:auto; white-space:pre-wrap; line-height:1.5; }
+  #log .m { color:#ff9900; font-weight:bold; }
+  #log .s2 { color:#4ade80; }  #log .s4 { color:#f87171; }
+  #log .u { color:#93c5fd; }
+  .hint { font-size:12px; color:#565959; margin:0 0 10px; }
+  input.f { padding:7px; border:1px solid #888; border-radius:4px; width:100%;
+            margin-bottom:6px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">amazon<span>.in</span></div>
+  <div class="searchbar">
+    <input id="q" placeholder="Search products…  (fires GET /api/search)">
+    <button onclick="search()">Search</button>
+  </div>
+  <button class="cartbtn" onclick="loadCart()">🛒 Cart (<span id="cartCount">0</span>)</button>
+</header>
+
+<nav>
+  <button onclick="loadProducts()">All</button>
+  <button onclick="loadProducts('electronics')">Electronics</button>
+  <button onclick="loadProducts('books')">Books</button>
+  <button onclick="loadProducts('fashion')">Fashion</button>
+  <button onclick="loadProducts('kitchen')">Home &amp; Kitchen</button>
+  <button onclick="loadProducts(null,'price_asc')">Price ↑</button>
+  <button onclick="loadProducts(null,'rating')">Top Rated</button>
+  <button onclick="loadDeals()">Today's Deals</button>
+  <button onclick="loadOrders()">Your Orders</button>
+</nav>
+
+<main>
+  <!-- ================= LEFT: catalogue ================= -->
+  <div>
+    <div class="panel">
+      <h2 id="listTitle">Products</h2>
+      <p class="hint" id="meta">Loading…</p>
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="panel" id="detailPanel" style="display:none">
+      <h2>Product detail — GET /api/products/:id</h2>
+      <div id="detail"></div>
+    </div>
+    <div class="panel" id="ordersPanel" style="display:none">
+      <h2>Your orders — GET /api/orders</h2>
+      <div id="orders"></div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT: cart, auth, log ================= -->
+  <div>
+    <div class="panel">
+      <h2>Cart — GET/POST/PUT/DELETE /api/cart</h2>
+      <div id="cart"></div>
+      <button class="yellow" onclick="placeOrder()">Place your order (POST /api/orders)</button>
+    </div>
+
+    <div class="panel">
+      <h2>Sign in — POST /api/auth/login</h2>
+      <input class="f" id="email" value="het@example.com">
+      <input class="f" id="pass" type="password" value="secret123">
+      <button class="yellow" onclick="login()">Sign in</button>
+      <p class="hint" id="authMsg" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Network activity</h2>
+      <p class="hint">Same requests you will see in DevTools → Network → Fetch/XHR.</p>
+      <div id="log"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = '';                 // same origin as this page
+let token = null;               // stored in memory after sign-in
+
+/* ------------------------------------------------------------------
+   ONE wrapper around fetch() so every call gets logged.
+   This is the single point where the frontend touches the backend.
+   ---------------------------------------------------------------- */
+async function api(method, path, body) {
+  const t0 = performance.now();
+  const options = { method, headers: {} };
+  if (body) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+  if (token) options.headers['Authorization'] = 'Bearer ' + token;
+
+  const res  = await fetch(API + path, options);
+  const data = await res.json();
+  const ms   = Math.round(performance.now() - t0);
+
+  logLine(method, path, res.status, ms, body);
+  return data;
+}
+
+function logLine(method, path, status, ms, body) {
+  const box = document.getElementById('log');
+  const cls = status < 400 ? 's2' : 's4';
+  box.innerHTML +=
+    `<span class="m">${method.padEnd(6)}</span>` +
+    `<span class="u">${path}</span>  ` +
+    `<span class="${cls}">${status}</span>  ${ms}ms` +
+    (body ? `\n       body: ${JSON.stringify(body)}` : '') + '\n';
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------- 1. Product listing ---------------- */
+async function loadProducts(category, sort) {
+  let path = '/api/products?page=1&size=8';
+  if (category) path += '&category=' + category;
+  if (sort)     path += '&sort=' + sort;
+
+  const data = await api('GET', path);
+  document.getElementById('listTitle').textContent =
+    category ? 'Results in ' + category : 'Products';
+  document.getElementById('meta').textContent =
+    `${data.total} results · page ${data.page} of ${data.totalPages}`;
+  render(data.products);
+}
+
+function render(list) {
+  const grid = document.getElementById('grid');
+  if (!list.length) { grid.innerHTML = '<p>No products found.</p>'; return; }
+  grid.innerHTML = list.map(p => `
+    <div class="card">
+      <div class="t">${p.title}</div>
+      <div class="stars">${'★'.repeat(Math.round(p.rating))}${'☆'.repeat(5-Math.round(p.rating))}
+        <span style="color:#007185">${p.reviews.toLocaleString('en-IN')}</span></div>
+      <div class="price">₹${p.price.toLocaleString('en-IN')}<small>₹${p.mrp.toLocaleString('en-IN')}</small></div>
+      ${p.prime ? '<div class="prime">✓ prime · FREE delivery</div>' : '<div class="hint">Delivery in 3-4 days</div>'}
+      ${p.stock === 0 ? '<div class="oos">Currently unavailable</div>' : ''}
+      <button class="link" onclick="viewProduct(${p.id})">View details →</button>
+      <button class="add" onclick="addToCart(${p.id})">Add to Cart</button>
+    </div>`).join('');
+}
+
+/* ---------------- 2. Search ---------------- */
+async function search() {
+  const q = document.getElementById('q').value;
+  const data = await api('GET', '/api/search?q=' + encodeURIComponent(q));
+  document.getElementById('listTitle').textContent = 'Results for "' + q + '"';
+  document.getElementById('meta').textContent =
+    data.results.length + ' results · suggestions: ' +
+    (data.suggestions.join(' | ') || 'none');
+  render(data.results);
+}
+
+/* ---------------- 3. Product detail ---------------- */
+async function viewProduct(id) {
+  const p = await api('GET', '/api/products/' + id);
+  const panel = document.getElementById('detailPanel');
+  panel.style.display = 'block';
+  document.getElementById('detail').innerHTML = `
+    <h3 style="margin:4px 0">${p.title}</h3>
+    <p class="stars">${'★'.repeat(Math.round(p.rating))} ${p.rating} · ${p.reviews.toLocaleString('en-IN')} ratings</p>
+    <p class="price">₹${p.price.toLocaleString('en-IN')}
+       <small>₹${p.mrp.toLocaleString('en-IN')}</small>
+       <span style="color:#b12704;font-size:14px"> ${p.discount}</span></p>
+    <p>${p.inStock ? '<b style="color:#007600">In stock</b>' : '<b class="oos">Out of stock</b>'} · ${p.delivery}</p>
+    <p class="hint">Similar items (sent in the same response, so no extra request):<br>
+       ${p.similar.map(s => s.title + ' — ₹' + s.price).join('<br>')}</p>`;
+  panel.scrollIntoView({ behavior: 'smooth' });
+}
+
+/* ---------------- 4. Cart ---------------- */
+async function addToCart(id) {
+  const data = await api('POST', '/api/cart', { productId: id, qty: 1 });
+  if (data.error) { alert(data.error + (data.title ? ': ' + data.title : '')); return; }
+  drawCart(data);
+}
+
+async function loadCart()      { drawCart(await api('GET', '/api/cart')); }
+async function updateQty(id,q) { drawCart(await api('PUT', '/api/cart/' + id, { qty: Number(q) })); }
+async function removeItem(id)  { drawCart(await api('DELETE', '/api/cart/' + id)); }
+
+function drawCart(c) {
+  document.getElementById('cartCount').textContent = c.count || 0;
+  const box = document.getElementById('cart');
+  if (!c.items || !c.items.length) {
+    box.innerHTML = '<p class="hint">Your cart is empty.</p>'; return;
+  }
+  box.innerHTML = `
+    <table><tr><th>Item</th><th>Qty</th><th>₹</th><th></th></tr>
+    ${c.items.map(i => `<tr>
+      <td>${i.title}</td>
+      <td><input type="number" min="1" value="${i.qty}" style="width:48px"
+           onchange="updateQty(${i.productId}, this.value)"></td>
+      <td>${(i.price*i.qty).toLocaleString('en-IN')}</td>
+      <td><button class="link" onclick="removeItem(${i.productId})">Delete</button></td>
+    </tr>`).join('')}</table>
+    <p class="hint" style="margin:8px 0 0">Subtotal ₹${c.subtotal.toLocaleString('en-IN')}
+       · Delivery ₹${c.delivery}</p>
+    <div class="tot">Order total: ₹${c.total.toLocaleString('en-IN')}</div>`;
+}
+
+/* ---------------- 5. Checkout ---------------- */
+async function placeOrder() {
+  const o = await api('POST', '/api/orders',
+                      { address: 'Ahmedabad, Gujarat 380015', payment: 'UPI' });
+  if (o.error) { alert(o.error); return; }
+  alert('Order ' + o.orderId + ' placed!\nTotal ₹' + o.total + '\nArriving ' + o.arriving);
+  drawCart({ items: [], count: 0 });
+  loadOrders();
+}
+
+/* ---------------- 6. Orders ---------------- */
+async function loadOrders() {
+  const data = await api('GET', '/api/orders');
+  document.getElementById('ordersPanel').style.display = 'block';
+  document.getElementById('orders').innerHTML = data.count === 0
+    ? '<p class="hint">No orders yet.</p>'
+    : data.orders.map(o => `
+        <div style="border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:8px">
+          <b>${o.orderId}</b> · ${o.status} · ₹${o.total.toLocaleString('en-IN')}
+          <div class="hint">${new Date(o.placedAt).toLocaleString()} · ${o.payment} · ${o.address}</div>
+          <div class="hint">${o.items.map(i => i.title + ' ×' + i.qty).join(', ')}</div>
+        </div>`).join('');
+}
+
+/* ---------------- 7. Deals ---------------- */
+async function loadDeals() {
+  const data = await api('GET', '/api/deals');
+  document.getElementById('listTitle').textContent = "Today's Deals";
+  document.getElementById('meta').textContent = data.deals.length + ' deals live';
+  document.getElementById('grid').innerHTML = data.deals.map(d => `
+    <div class="card">
+      <div class="t">${d.title}</div>
+      <div style="color:#b12704;font-weight:600">${d.off} off</div>
+      <div class="price">₹${d.price.toLocaleString('en-IN')}<small>₹${d.mrp.toLocaleString('en-IN')}</small></div>
+      <button class="add" onclick="addToCart(${d.id})">Add to Cart</button>
+    </div>`).join('');
+}
+
+/* ---------------- 8. Sign in ---------------- */
+async function login() {
+  const data = await api('POST', '/api/auth/login', {
+    email: document.getElementById('email').value,
+    password: document.getElementById('pass').value
+  });
+  const msg = document.getElementById('authMsg');
+  if (data.error) { msg.textContent = '✗ ' + data.error; msg.style.color = '#b12704'; return; }
+  token = data.token;                       // sent as Authorization header afterwards
+  msg.style.color = '#007600';
+  msg.textContent = '✓ Hello, ' + data.user.name + ' — token stored, now sent on every request.';
+}
+
+/* ---------------- initial page load ----------------
+   Amazon's homepage also fires several parallel requests on load. ---- */
+loadProducts();
+loadCart();
+</script>
+</body>
+</html>
